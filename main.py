@@ -1,37 +1,58 @@
 import sys
 import os
-
-from PyQt5.QtWidgets import QMainWindow, QApplication, QLabel, QLineEdit, QPushButton
+from PyQt5.QtWidgets import QMainWindow, QApplication
 from PyQt5 import uic
+from PyQt5.QtCore import QThread, pyqtSignal
 from pytube import YouTube
+
 
 class UI(QMainWindow):
     def __init__(self):
         super(UI, self).__init__()
-
-        # Load the UI file
         uic.loadUi("home.ui", self)
-
-        # Define widgets
-        self.prompt_user = self.findChild(QLabel, "promptUser")
-        self.link_input_field = self.findChild(QLineEdit, "linkInputField")
-        self.download_button = self.findChild(QPushButton, "downloadButton")
-
-        # actions
-        self.download_button.clicked.connect(self.download)
-
+        self.downloadButton.clicked.connect(self.download)
         self.show()
 
     def download(self):
-        try:
-            self.user_name = os.getlogin()
-            self.link = self.link_input_field.text()
-            yt = YouTube(self.link)
-            vid_stream = yt.streams.get_highest_resolution()
-            vid_stream.download(f"C:\\Users\\{self.user_name}\\Downloads")
+        link = self.linkInputField.text()
 
+        # Start the download process
+        self.promptUser.setText("التقدم: 0%")
+        self.download = DownloadThread(link)
+        self.download.progress_signal.connect(self.update_progress)
+        self.download.start()
+
+    def update_progress(self, progress):
+        self.promptUser.setText(f"التقدم: {progress}%")
+        if self.promptUser.text() == "التقدم: 100%":
+            self.show_finished_screen()
+
+    def show_finished_screen(self):
+        self.promptUser.setText("تم التحميل")
+        self.linkInputField.setText("")
+
+
+class DownloadThread(QThread):
+    progress_signal = pyqtSignal(int)
+
+    def __init__(self, link):
+        super(DownloadThread, self).__init__()
+        self.link = link
+
+    def run(self):
+        try:
+            user_name = os.getlogin()
+            yt = YouTube(self.link, on_progress_callback=self.on_progress)
+            vid_stream = yt.streams.get_highest_resolution()
+            vid_stream.download(f"C:\\Users\\{user_name}\\Downloads")
         except:
-            print("An error occured in the download function")
+            print(f"An error occurred in the download function")
+
+    def on_progress(self, stream, chunk, bytes_remaining):
+        total_size = stream.filesize
+        downloaded_bytes = total_size - bytes_remaining
+        progress = int(downloaded_bytes / total_size * 100)
+        self.progress_signal.emit(progress)
 
 # Initialize the app
 app = QApplication(sys.argv)
